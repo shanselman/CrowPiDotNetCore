@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ILLink.Tasks" Version="0.1.4-preview-906439" />
     <PackageReference Include="System.Device.Gpio" Version="0.1.0-prerelease.19065.1" />
   </ItemGroup>
 
