@@ -18,6 +18,7 @@
                "pipeCwd": "${workspaceFolder}",
                "pipeProgram": "${env:ChocolateyInstall}\\bin\\PLINK.EXE",
                "pipeArgs": [
+                   "-ssh",
                    "-pw",
                    "raspberry",
                    "root@crowpi.lan"
