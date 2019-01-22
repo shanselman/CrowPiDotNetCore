@@ -8,7 +8,7 @@
            "name": ".NET Core Launch (remote console)",
            "type": "coreclr",
            "request": "launch",
-           "preLaunchTask": "build",
+           "preLaunchTask": "publish",
            "program": "/home/pi/dotnet/dotnet",
            "args": ["/home/pi/Desktop/rpitest/rpitest.dll"],
            "cwd": "/home/pi/Desktop/rpitest",
