@@ -16,11 +16,8 @@
            "console": "internalConsole",
            "pipeTransport": {
                "pipeCwd": "${workspaceFolder}",
-               "pipeProgram": "${env:ChocolateyInstall}\\bin\\PLINK.EXE",
+               "pipeProgram": "ssh.exe",
                "pipeArgs": [
-                   "-ssh",
-                   "-pw",
-                   "raspberry",
                    "root@crowpi.lan"
                ],
                "debuggerPath": "/home/pi/vsdbg/vsdbg"
@@ -32,7 +29,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/bin/Debug/netcoreapp2.1/rpitest.dll",
+            "program": "${workspaceFolder}/bin/Debug/netcoreapp2.2/rpitest.dll",
             "args": [],
             "cwd": "${workspaceFolder}",
             // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window
