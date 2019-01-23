@@ -10,9 +10,10 @@ namespace LCDDisplay
     {
         static void Main(string[] args)
         {
-            int[] dataPins = { 6, 16, 20, 21 };
-            int registerSelectPin = 18;
-            int enablePin = 5;
+            int[] dataPins = { 12, 11, 10, 9 };
+            int registerSelectPin = 15;
+            int enablePin = 13;
+            int readAndWritePin = 14;
             DateTime xmas = new DateTime(2019, 12, 25);
             CancellationTokenSource cts = new CancellationTokenSource();
             using (var lcd = new Lcm1602c(registerSelectPin, enablePin, dataPins))
