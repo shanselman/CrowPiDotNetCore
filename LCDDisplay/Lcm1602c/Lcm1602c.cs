@@ -5,9 +5,12 @@
 using System;
 using System.Device.Gpio;
 using System.Device.Gpio.Drivers;
+using System.Device.I2c;
+using System.Device.I2c.Drivers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Iot.Device.Mcp23xxx;
 
 namespace Iot.Device.Lcm1602c
 {
@@ -39,8 +42,10 @@ namespace Iot.Device.Lcm1602c
         private readonly int _rwPin; // LOW: write to LCD.  HIGH: read from LCD.
         private readonly int _enablePin; // Activated by a HIGH pulse.
         private readonly int[] _dataPins;
+        private readonly bool _usingMcp;
 
         private GpioController _controller;
+        private readonly Mcp23008 _mcpController;
 
         private DisplayFlags _displayFunction;
         private DisplayFlags _displayControl;
@@ -56,6 +61,12 @@ namespace Iot.Device.Lcm1602c
         }
 
         public Lcm1602c(int registerSelect, int readWrite, int enable, params int[] data)
+            : this (null, registerSelect, readWrite, enable, data)
+        {
+            // Do Nothing
+        }
+
+        public Lcm1602c(Mcp23008 mcpController, int registerSelect, int readWrite, int enable, params int[] data)
         {
             _rwPin = readWrite;
             _rsPin = registerSelect;
@@ -78,17 +89,62 @@ namespace Iot.Device.Lcm1602c
             {
                 throw new ArgumentException($"The length of the array given to parameter {nameof(data)} must be 4 or 8");
             }
-            _controller = (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) ?
-                                new GpioController(PinNumberingScheme.Logical, new UnixDriver()) :
-                                new GpioController(PinNumberingScheme.Logical, new Windows10Driver());
-            _controller.OpenPin(_rsPin, PinMode.Input);
+            if (mcpController == null)
+            {
+                _controller = (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) ?
+                                    new GpioController(PinNumberingScheme.Logical, new UnixDriver()) :
+                                    new GpioController(PinNumberingScheme.Logical, new Windows10Driver());
+                _usingMcp = false;
+            }
+            else
+            {
+                _mcpController = mcpController;
+                _usingMcp = true;
+            }
+            OpenPin(_rsPin, PinMode.Input);
             if (_rwPin != -1)
-                _controller.OpenPin(_rwPin, PinMode.Input);
-            _controller.OpenPin(_enablePin, PinMode.Input);
+                OpenPin(_rwPin, PinMode.Input);
+            OpenPin(_enablePin, PinMode.Input);
             foreach (int i in _dataPins)
-                _controller.OpenPin(i, PinMode.Input);
+                OpenPin(i, PinMode.Input);
             // By default, initialize the display with one row and 16 characters.
             Begin(16, 1);
+        }
+
+        private void OpenPin(int pinNumber, PinMode mode)
+        {
+            if (_usingMcp)
+            {
+                _mcpController.SetPinMode(pinNumber, mode);
+            }
+            else
+            {
+                _controller.OpenPin(pinNumber, mode);
+            }
+        }
+
+        private void SetPinMode(int pinNumber, PinMode mode)
+        {
+            if (_usingMcp)
+            {
+                _mcpController.SetPinMode(pinNumber, mode);
+            }
+            else
+            {
+                _controller.SetPinMode(pinNumber, mode);
+            }
+        }
+
+        private void Write(int pinNumber, PinValue value)
+        {
+            if (_usingMcp)
+            {
+                _mcpController.WritePin(pinNumber, value);
+            }
+            else
+            {
+                _controller.Write(pinNumber, value);
+            }
         }
 
         public void Dispose()
@@ -117,18 +173,18 @@ namespace Iot.Device.Lcm1602c
                 _displayFunction |= DisplayFlags.LCD_5x10DOTS;
             }
 
-            _controller.SetPinMode(_rsPin, PinMode.Output);
+            SetPinMode(_rsPin, PinMode.Output);
             // we can save 1 pin by not using RW. Indicate by passing null instead of a pin
             if (_rwPin != -1)
             {
-                _controller.SetPinMode(_rwPin, PinMode.Output);
+                SetPinMode(_rwPin, PinMode.Output);
             }
-            _controller.SetPinMode(_enablePin, PinMode.Output);
+            SetPinMode(_enablePin, PinMode.Output);
 
             // Do this just once, instead of every time a character is drawn (for speed reasons).
             for (int i = 0; i < _dataPins.Length; ++i)
             {
-                _controller.SetPinMode(_dataPins[i], PinMode.Output);
+                SetPinMode(_dataPins[i], PinMode.Output);
             }
 
             // SEE PAGE 45/46 FOR INITIALIZATION SPECIFICATION!
@@ -136,12 +192,12 @@ namespace Iot.Device.Lcm1602c
             // before sending commands. Arduino can turn on way before 4.5V so we'll wait 50
             DelayMicroseconds(50000);
             // Now we pull both RS and R/W low to begin commands
-            _controller.Write(_rsPin, PinValue.Low);
-            _controller.Write(_enablePin, PinValue.Low);
+            Write(_rsPin, PinValue.Low);
+            Write(_enablePin, PinValue.Low);
 
             if (_rwPin != -1)
             {
-                _controller.Write(_rwPin, PinValue.Low);
+                Write(_rwPin, PinValue.Low);
             }
 
             //put the LCD into 4 bit or 8 bit mode
@@ -368,12 +424,12 @@ namespace Iot.Device.Lcm1602c
         // write either command or data, with automatic 4/8-bit selection
         private void Send(byte value, PinValue mode)
         {
-            _controller.Write(_rsPin, mode);
+            Write(_rsPin, mode);
 
             // if there is a RW pin indicated, set it low to Write
             if (_rwPin != -1)
             {
-                _controller.Write(_rwPin, PinValue.Low);
+                Write(_rwPin, PinValue.Low);
             }
 
             if (_displayFunction.HasFlag(DisplayFlags.LCD_8BITMODE))
@@ -389,11 +445,11 @@ namespace Iot.Device.Lcm1602c
 
         private void PulseEnable()
         {
-            _controller.Write(_enablePin, PinValue.Low);
+            Write(_enablePin, PinValue.Low);
             DelayMicroseconds(1);
-            _controller.Write(_enablePin, PinValue.High);
+            Write(_enablePin, PinValue.High);
             DelayMicroseconds(1);    // enable pulse must be >450ns
-            _controller.Write(_enablePin, PinValue.Low);
+            Write(_enablePin, PinValue.Low);
             DelayMicroseconds(100);   // commands need > 37us to settle
         }
 
@@ -421,7 +477,7 @@ namespace Iot.Device.Lcm1602c
         private void DigitalWrite(int pin, int value)
         {
             PinValue state = (value == 1) ? PinValue.High : PinValue.Low;
-            _controller.Write(pin, state);
+            Write(pin, state);
         }
 
         private static void DelayMicroseconds(int microseconds)
