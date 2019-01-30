@@ -12,12 +12,12 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Iot.Device.Mcp23xxx;
 
-namespace Iot.Device.Lcm1602c
+namespace Iot.Device.Lcm1602a1
 {
     /// <summary>
     /// Supports Lcm1602c LCD controller. Ported from: https://github.com/adafruit/Adafruit_Python_CharLCD/blob/master/Adafruit_CharLCD/Adafruit_CharLCD.py
     /// </summary>
-    public class Lcm1602c : IDisposable
+    public class Lcm1602a1 : IDisposable
     {
         // When the display powers up, it is configured as follows:
         //
@@ -40,6 +40,7 @@ namespace Iot.Device.Lcm1602c
 
         private readonly int _rsPin; // LOW: command.  HIGH: character.
         private readonly int _rwPin; // LOW: write to LCD.  HIGH: read from LCD.
+        private readonly int _backlight;
         private readonly int _enablePin; // Activated by a HIGH pulse.
         private readonly int[] _dataPins;
         private readonly bool _usingMcp;
@@ -54,24 +55,51 @@ namespace Iot.Device.Lcm1602c
         private byte _numLines;
         private readonly byte[] _rowOffsets;
 
-        public Lcm1602c(int registerSelect, int enable, params int[] data)
-            : this(registerSelect, -1, enable, data)
+        /// <summary>
+        /// Initializes a new Lcm1602a1 display object without using a readWrite or backlight pin.
+        /// This object will use the board's GPIO pins.
+        /// </summary>
+        /// <param name="registerSelect">The pin that controls the regsiter select.</param>
+        /// <param name="enable">The pin that controls the enable switch.</param>
+        /// <param name="data">Collection of pins holding the data that will be printed on the screen.</param>
+        public Lcm1602a1(int registerSelect, int enable, int[] data)
+            : this(registerSelect, -1, enable, -1, data)
         {
             // Do nothing
         }
 
-        public Lcm1602c(int registerSelect, int readWrite, int enable, params int[] data)
-            : this (null, registerSelect, readWrite, enable, data)
+        /// <summary>
+        /// Initializes a new Lcm1602a1 display object.
+        /// This object will use the board's GPIO pins.
+        /// </summary>
+        /// <param name="registerSelect">The pin that controls the regsiter select.</param>
+        /// <param name="readWrite">The pin that controls the read and write switch.</param>
+        /// <param name="enable">The pin that controls the enable switch.</param>
+        /// <param name="backlight">The pin that controls the backlight of the display.</param>
+        /// <param name="data">Collection of pins holding the data that will be printed on the screen.</param>
+        public Lcm1602a1(int registerSelect, int readWrite, int enable, int backlight, int[] data)
+            : this (null, registerSelect, readWrite, enable, backlight, data)
         {
             // Do Nothing
         }
 
-        public Lcm1602c(Mcp23008 mcpController, int registerSelect, int readWrite, int enable, params int[] data)
+        /// <summary>
+        /// Initializes a new Lcm1602a1 display object.
+        /// This object will use the board's GPIO pins, or the McpController pins if one is provided.
+        /// </summary>
+        /// <param name="mcpController">McpController that is used to provide the pins for the display. Null if we should use board's GPIO pins instead.</param>
+        /// <param name="registerSelect">The pin that controls the regsiter select.</param>
+        /// <param name="readWrite">The pin that controls the read and write switch.</param>
+        /// <param name="enable">The pin that controls the enable switch.</param>
+        /// <param name="backlight">The pin that controls the backlight of the display.</param>
+        /// <param name="data">Collection of pins holding the data that will be printed on the screen.</param>
+        public Lcm1602a1(Mcp23008 mcpController, int registerSelect, int readWrite, int enable, int backlight, int[] data)
         {
             _rwPin = readWrite;
             _rsPin = registerSelect;
             _enablePin = enable;
             _dataPins = data;
+            _backlight = backlight;
 
             _rowOffsets = new byte[4];
 
@@ -89,6 +117,7 @@ namespace Iot.Device.Lcm1602c
             {
                 throw new ArgumentException($"The length of the array given to parameter {nameof(data)} must be 4 or 8");
             }
+
             if (mcpController == null)
             {
                 _controller = (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) ?
@@ -101,9 +130,16 @@ namespace Iot.Device.Lcm1602c
                 _mcpController = mcpController;
                 _usingMcp = true;
             }
+
             OpenPin(_rsPin, PinMode.Input);
             if (_rwPin != -1)
+            {
                 OpenPin(_rwPin, PinMode.Input);
+            }
+            if (_backlight != -1)
+            {
+                OpenPin(_backlight, PinMode.Input);
+            }
             OpenPin(_enablePin, PinMode.Input);
             foreach (int i in _dataPins)
                 OpenPin(i, PinMode.Input);
@@ -165,7 +201,7 @@ namespace Iot.Device.Lcm1602c
 
             _numLines = lines;
 
-            SetRowOffsets(0x00, 0x40, (byte)(0x00 + cols), (byte)(0x40 + cols));
+            SetRowOffsets(0x00, 0x40, 0x14, 0x54);
 
             // for some 1 line displays you can select a 10 pixel high font
             if ((dotSize != DisplayFlags.LCD_5x8DOTS) && (lines == 1))
@@ -173,11 +209,19 @@ namespace Iot.Device.Lcm1602c
                 _displayFunction |= DisplayFlags.LCD_5x10DOTS;
             }
 
+            _displayControl = DisplayFlags.LCD_DISPLAYON | DisplayFlags.LCD_CURSOROFF | DisplayFlags.LCD_BLINKOFF;
+            _displayMode = DisplayFlags.LCD_ENTRYLEFT | DisplayFlags.LCD_ENTRYSHIFTDECREMENT;
+
             SetPinMode(_rsPin, PinMode.Output);
             // we can save 1 pin by not using RW. Indicate by passing null instead of a pin
             if (_rwPin != -1)
             {
                 SetPinMode(_rwPin, PinMode.Output);
+            }
+            if (_backlight != -1)
+            {
+                SetPinMode(_backlight, PinMode.Output);
+                Write(_backlight, PinValue.High);
             }
             SetPinMode(_enablePin, PinMode.Output);
 
@@ -191,67 +235,15 @@ namespace Iot.Device.Lcm1602c
             // according to datasheet, we need at least 40ms after power rises above 2.7V
             // before sending commands. Arduino can turn on way before 4.5V so we'll wait 50
             DelayMicroseconds(50000);
-            // Now we pull both RS and R/W low to begin commands
-            Write(_rsPin, PinValue.Low);
-            Write(_enablePin, PinValue.Low);
+            
+            // Initialize the display.
+            Write((byte)0x33);
+            Write((byte)0x32);
 
-            if (_rwPin != -1)
-            {
-                Write(_rwPin, PinValue.Low);
-            }
-
-            //put the LCD into 4 bit or 8 bit mode
-            if (_displayFunction.HasFlag(DisplayFlags.LCD_8BITMODE))
-            {
-                // this is according to the hitachi HD44780 datasheet
-                // page 45 figure 23
-
-                // Send function set command sequence
-                Command((byte)Commands.LCD_FUNCTIONSET | (byte)_displayFunction);
-                DelayMicroseconds(4500);  // wait more than 4.1ms
-
-                // second try
-                Command((byte)Commands.LCD_FUNCTIONSET | (byte)_displayFunction);
-                DelayMicroseconds(150);
-
-                // third go
-                Command((byte)Commands.LCD_FUNCTIONSET | (byte)_displayFunction);
-            }
-            else
-            {
-                // this is according to the hitachi HD44780 datasheet
-                // figure 24, pg 46
-
-                // we start in 8bit mode, try to set 4 bit mode
-                Write4bits(0x03);
-                DelayMicroseconds(4500); // wait min 4.1ms
-
-                // second try
-                Write4bits(0x03);
-                DelayMicroseconds(4500); // wait min 4.1ms
-
-                // third go!
-                Write4bits(0x03);
-                DelayMicroseconds(150);
-
-                // finally, set to 4-bit interface
-                Write4bits(0x02);
-            }
-
-            // finally, set # lines, font size, etc.
-            Command((byte)Commands.LCD_FUNCTIONSET | (byte)_displayFunction);
-
-            // turn the display on with no cursor or blinking default
-            _displayControl = DisplayFlags.LCD_DISPLAYON | DisplayFlags.LCD_CURSOROFF | DisplayFlags.LCD_BLINKOFF;
-            Display();
-
-            // clear it off
+            Write((byte)((byte)Commands.LCD_DISPLAYCONTROL| (byte)_displayControl));
+            Write((byte)((byte)Commands.LCD_FUNCTIONSET | (byte)_displayFunction));
+            Write((byte)((byte)Commands.LCD_ENTRYMODESET | (byte)_displayMode));
             Clear();
-
-            // Initialize to default text direction (for romance languages)
-            _displayMode = DisplayFlags.LCD_ENTRYLEFT | DisplayFlags.LCD_ENTRYSHIFTDECREMENT;
-            // set the entry mode
-            Command((byte)Commands.LCD_ENTRYMODESET | (byte)_displayMode);
         }
 
         private void SetRowOffsets(byte row0, byte row1, byte row2, byte row3)
@@ -266,13 +258,13 @@ namespace Iot.Device.Lcm1602c
         public void Clear()
         {
             Command((byte)Commands.LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
-            DelayMicroseconds(2000);  // this command takes a long time!
+            DelayMicroseconds(3000);  // this command takes a long time!
         }
 
         public void Home()
         {
             Command((byte)Commands.LCD_RETURNHOME);  // set cursor position to zero
-            DelayMicroseconds(2000);  // this command takes a long time!
+            DelayMicroseconds(3000);  // this command takes a long time!
         }
 
         public void SetCursor(byte col, byte row)
@@ -385,6 +377,22 @@ namespace Iot.Device.Lcm1602c
             }
         }
 
+        public void BacklightOn()
+        {
+            if (_backlight != -1)
+            {
+                Write(_backlight, PinValue.High);
+            }
+        }
+
+        public void BacklightOff()
+        {
+            if (_backlight != -1)
+            {
+                Write(_backlight, PinValue.Low);
+            }
+        }
+
         public void Print(string value)
         {
             for (int i = 0; i < value.Length; ++i)
@@ -457,7 +465,7 @@ namespace Iot.Device.Lcm1602c
         {
             for (int i = 0; i < 4; i++)
             {
-                DigitalWrite(_dataPins[i], value >> i);
+                DigitalWrite(_dataPins[i], ((value >> i) & 1));
             }
 
             PulseEnable();
@@ -467,7 +475,7 @@ namespace Iot.Device.Lcm1602c
         {
             for (int i = 0; i < 8; i++)
             {
-                DigitalWrite(_dataPins[i], value >> i);
+                DigitalWrite(_dataPins[i], ((value >> i) & 1));
             }
 
             PulseEnable();

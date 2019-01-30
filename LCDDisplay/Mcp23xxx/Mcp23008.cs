@@ -78,7 +78,7 @@ namespace Iot.Device.Mcp23xxx
                     _gpio |= (byte)(1 << (pinNumber % 8));
                     break;
                 case PinValue.Low:
-                    _gpio |= (byte)(~(1 << (pinNumber % 8)));
+                    _gpio &= (byte)(~(1 << (pinNumber % 8)));
                     break;
             }
             Write(Register.Address.GPIO, _gpio);

@@ -4,7 +4,7 @@
 
 using System;
 
-namespace Iot.Device.Lcm1602c
+namespace Iot.Device.Lcm1602a1
 {
     [Flags]
     public enum DisplayFlags : byte
