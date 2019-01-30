@@ -2,7 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-namespace Iot.Device.Lcm1602c
+namespace Iot.Device.Lcm1602a1
 {
     internal enum Commands
     {

@@ -4,7 +4,7 @@ using System.Device.Gpio.Drivers;
 using System.Device.I2c;
 using System.Device.I2c.Drivers;
 using System.Threading;
-using Iot.Device.Lcm1602c;
+using Iot.Device.Lcm1602a1;
 using Iot.Device.Mcp23xxx;
 
 namespace LCDDisplay
@@ -39,18 +39,19 @@ namespace LCDDisplay
             //     }
             // }
 
-            UnixI2cDevice i2CDevice = new UnixI2cDevice(new I2cConnectionSettings(1, 0x21));
-            Mcp23008 mcpDevice = new Mcp23008(i2CDevice);
+            Mcp23008 mcpDevice = new Mcp23008(new UnixI2cDevice(new I2cConnectionSettings(1, 0x21)));
             int[] dataPins = { 3, 4, 5, 6 };
             int registerSelectPin = 1;
             int enablePin = 2;
-            using (mcpDevice)
-            using (Lcm1602c lcd = new Lcm1602c(mcpDevice, registerSelectPin, -1, enablePin, dataPins))
+            int backlightPin = 7;
+            using (Lcm1602a1 lcd = new Lcm1602a1(mcpDevice, registerSelectPin, -1, enablePin, backlightPin, dataPins))
             {
                 lcd.Clear();
                 lcd.Begin(16, 2);
 
-                lcd.Print("Hello World");
+                lcd.Print("Hello World!");
+                lcd.SetCursor(0, 1);
+                lcd.Print(".NET Core");
             }
         }
     }
